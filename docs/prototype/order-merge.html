@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>주문 엑셀 합치기</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --surface: #ffffff; --surface-2: #f0f2f5; --border: #dfe3e8;
+    --text: #1b1f24; --muted: #5d6673; --accent: #2f6fde; --accent-text: #ffffff;
+    --ok: #1f8a4c; --warn: #b26a00; --err: #c43c3c;
+    --g1: #2f6fde; --g2: #c2410c; --g3: #0f8a7a; --g4: #8b3fd1; --g5: #b8860b; --g6: #c0367a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121417; --surface: #1b1e23; --surface-2: #23272d; --border: #333941;
+      --text: #e8eaed; --muted: #9aa3ad; --accent: #6b9cf0; --accent-text: #0d1117;
+      --ok: #4cc27f; --warn: #e3a33a; --err: #ef7373;
+      --g1: #6b9cf0; --g2: #f08a5d; --g3: #3fc1ae; --g4: #b98af0; --g5: #e0b84a; --g6: #ef7aaf;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121417; --surface: #1b1e23; --surface-2: #23272d; --border: #333941;
+    --text: #e8eaed; --muted: #9aa3ad; --accent: #6b9cf0; --accent-text: #0d1117;
+    --ok: #4cc27f; --warn: #e3a33a; --err: #ef7373;
+    --g1: #6b9cf0; --g2: #f08a5d; --g3: #3fc1ae; --g4: #b98af0; --g5: #e0b84a; --g6: #ef7aaf;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", "Segoe UI", sans-serif; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 20px 16px 64px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  h1 { font-size: 20px; margin: 0; }
+  .proto-tag { font-size: 12px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; }
+  .steps { display: flex; gap: 4px; margin: 0 0 20px; padding: 0; list-style: none; counter-reset: s; }
+  .steps li { flex: 1; font-size: 13px; color: var(--muted); padding: 8px 6px; border-bottom: 3px solid var(--border); text-align: center; }
+  .steps li.on { color: var(--text); font-weight: 600; border-color: var(--accent); }
+  .steps li.done { color: var(--ok); border-color: var(--ok); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .drop { border: 2px dashed var(--border); border-radius: 12px; padding: 48px 16px; text-align: center; background: var(--surface-2); }
+  .drop strong { display: block; font-size: 17px; margin-bottom: 6px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .between { justify-content: space-between; }
+  .end { justify-content: flex-end; }
+  button { font: inherit; border-radius: 8px; padding: 9px 16px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+  button:hover { background: var(--surface-2); }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  button.primary:hover { filter: brightness(1.07); }
+  button.link { border: none; background: none; color: var(--accent); padding: 4px 6px; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .notice { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); font-size: 14px; margin-top: 14px; }
+  .notice.warn { border-left: 4px solid var(--warn); }
+  .notice.lock { border-left: 4px solid var(--ok); }
+  .files { list-style: none; margin: 0; padding: 0; }
+  .files li { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .files li:last-child { border-bottom: none; }
+  .badge { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 6px; border: 1px solid currentColor; white-space: nowrap; }
+  .badge.ok { color: var(--ok); } .badge.err { color: var(--err); } .badge.warn { color: var(--warn); }
+  .fname { flex: 1; min-width: 140px; overflow-wrap: anywhere; }
+  .stat { font-size: 22px; font-weight: 700; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0; }
+  .tabs button { padding: 5px 12px; font-size: 13px; border-radius: 999px; }
+  .tabs button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  td.num, th.num { text-align: right; }
+  tr.off td { opacity: .4; text-decoration: line-through; }
+  .grp { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; }
+  .grp i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  td.bar { padding: 0; width: 4px; }
+  input[type="text"], select { font: inherit; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); max-width: 100%; }
+  .map-grid { display: grid; grid-template-columns: 120px 1fr; gap: 10px 14px; align-items: center; }
+  .req::after { content: " *"; color: var(--err); }
+  .exports { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .exports .card { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+  .exports h3 { margin: 0; font-size: 16px; }
+  .pick { list-style: none; padding: 0; margin: 0; font-size: 14px; }
+  .pick li { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dotted var(--border); }
+  .alias-list { display: grid; gap: 10px; }
+  .alias-item { display: grid; grid-template-columns: 1fr 200px; gap: 10px; align-items: center; }
+  .cards { display: none; }
+  .ocard { border: 1px solid var(--border); border-left-width: 5px; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; background: var(--surface); }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 18px; border-radius: 10px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  .hidden { display: none !important; }
+  @media (max-width: 640px) {
+    .steps li { font-size: 11px; padding: 6px 2px; }
+    .table-wrap.orders { display: none; }
+    .cards { display: block; }
+    .map-grid { grid-template-columns: 1fr; gap: 4px; }
+    .map-grid label { margin-top: 8px; }
+    .alias-item { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>주문 엑셀 합치기</h1>
+    <span class="proto-tag">프로토타입 · 샘플 데이터</span>
+  </header>
+
+  <ol class="steps" id="steps">
+    <li data-s="1">① 파일 올리기</li>
+    <li data-s="2">② 확인</li>
+    <li data-s="3">③ 정리</li>
+    <li data-s="4">④ 내려받기</li>
+  </ol>
+
+  <!-- S1 -->
+  <section id="s1">
+    <div class="card">
+      <div class="drop">
+        <strong>여기에 주문 엑셀 파일을 끌어다 놓으세요</strong>
+        <div class="muted small">또는 파일 선택 · 여러 개 가능 · xlsx, xls, csv</div>
+        <div class="row" style="justify-content:center;margin-top:18px">
+          <button class="primary" id="btn-sample">샘플 파일 3개로 체험하기</button>
+        </div>
+        <div class="muted small" style="margin-top:10px">프로토타입이라 실제 파일은 읽지 않고 샘플 데이터로 진행합니다.</div>
+      </div>
+      <div class="notice lock">🔒 <div>파일은 <b>이 브라우저 안에서만</b> 처리되며 어디에도 업로드되지 않습니다. 창을 닫으면 주문 데이터는 사라집니다.</div></div>
+      <p class="muted small" style="margin:14px 0 0">지원 마켓: 스마트스토어 · 쿠팡 · 11번가 · G마켓/옥션 · 기타(열 직접 연결)</p>
+    </div>
+  </section>
+
+  <!-- S2 -->
+  <section id="s2" class="hidden">
+    <div class="card">
+      <div class="row between">
+        <div><span class="stat" id="s2-files"></span> <span class="muted">파일</span> · <span class="stat" id="s2-orders"></span> <span class="muted">주문</span></div>
+        <button class="link">+ 파일 더 올리기</button>
+      </div>
+      <ul class="files" id="file-list" style="margin-top:10px"></ul>
+      <div class="notice warn" id="dup-notice">⚠ <div>중복 의심 1건: 같은 주문번호 <b>2026101512345</b>가 두 번 들어 있어요. 합칠 때 한 건만 남깁니다.</div></div>
+    </div>
+    <div class="row end">
+      <button id="s2-back">← 처음으로</button>
+      <button class="primary" id="s2-next">다음: 주문 정리 →</button>
+    </div>
+  </section>
+
+  <!-- S2-1 mapping -->
+  <section id="s21" class="hidden">
+    <div class="card">
+      <h2 style="margin:0 0 4px;font-size:18px">orders.csv 의 열을 알려 주세요</h2>
+      <p class="muted small" style="margin:0 0 16px">열 이름이 비슷한 것으로 미리 골라 두었어요. 맞는지만 확인하세요.</p>
+      <div class="map-grid" id="map-grid"></div>
+      <h3 style="font-size:14px;margin:20px 0 6px">미리보기 (첫 3줄)</h3>
+      <div class="table-wrap"><table id="map-preview"></table></div>
+      <div class="map-grid" style="margin-top:18px">
+        <label for="map-market">마켓 이름</label>
+        <input type="text" id="map-market" value="자사몰">
+      </div>
+      <label class="row small" style="margin-top:12px"><input type="checkbox" checked> 다음에도 이 형식은 자동으로 연결</label>
+    </div>
+    <div class="row end">
+      <button id="s21-cancel">취소</button>
+      <button class="primary" id="s21-ok">연결 완료</button>
+    </div>
+  </section>
+
+  <!-- S3 -->
+  <section id="s3" class="hidden">
+    <div class="card">
+      <div>주문 <span class="stat" id="s3-orders"></span>건 → 발송 <span class="stat" id="s3-boxes"></span>박스 <span class="muted">(합포장 <span id="s3-groups"></span>묶음)</span></div>
+      <div class="tabs" id="tabs"></div>
+      <div class="table-wrap orders"><table id="order-table"></table></div>
+      <div class="cards" id="order-cards"></div>
+      <div class="notice" id="alias-notice"></div>
+    </div>
+    <div class="card hidden" id="alias-card">
+      <div class="row between"><h3 style="margin:0;font-size:16px">상품명 줄임말</h3><button class="link" id="alias-close">닫기</button></div>
+      <p class="muted small">송장과 피킹 리스트에는 줄임말이 찍힙니다. 한 번 정하면 다음에도 기억해요.</p>
+      <div class="alias-list" id="alias-list"></div>
+    </div>
+    <div class="row end">
+      <button id="s3-back">← 이전</button>
+      <button class="primary" id="s3-next">다음: 내려받기 →</button>
+    </div>
+  </section>
+
+  <!-- S4 -->
+  <section id="s4" class="hidden">
+    <div class="exports">
+      <div class="card">
+        <h3>택배사 업로드용</h3>
+        <div class="muted small"><span id="ex-boxes"></span>박스 · 합포장 반영</div>
+        <select id="courier"><option>CJ대한통운</option><option>한진택배</option><option>롯데택배</option><option>우체국택배</option><option>기본 양식</option></select>
+        <button class="primary" data-ex="courier">⬇ 내려받기</button>
+      </div>
+      <div class="card">
+        <h3>피킹 리스트</h3>
+        <div class="muted small"><span id="ex-kinds"></span>종 · 총 <span id="ex-qty"></span>개</div>
+        <ul class="pick" id="pick"></ul>
+        <div class="row"><button data-ex="print">🖨 인쇄</button><button class="primary" data-ex="pick">⬇ 내려받기</button></div>
+      </div>
+      <div class="card">
+        <h3>통합 주문표</h3>
+        <div class="muted small"><span id="ex-orders"></span>건 · 원래 마켓·주문번호 포함</div>
+        <button class="primary" data-ex="all">⬇ 내려받기</button>
+      </div>
+    </div>
+    <div class="row end" style="margin-top:16px">
+      <button id="s4-back">← 이전</button>
+      <button id="s4-reset">처음부터 다시</button>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const FIELDS = [
+  { key: 'orderNo', label: '주문번호', req: true },
+  { key: 'receiver', label: '수취인', req: true },
+  { key: 'phone', label: '연락처', req: true },
+  { key: 'address', label: '주소', req: true },
+  { key: 'product', label: '상품명', req: true },
+  { key: 'qty', label: '수량', req: true },
+  { key: 'option', label: '옵션' },
+  { key: 'memo', label: '배송메모' },
+];
+
+// 샘플 데이터 (가짜 개인정보)
+const SAMPLE = [
+  { name: '스마트스토어_주문_1015.xlsx', market: '스마트스토어', status: 'ok', rows: [
+    ['2026101512345','김민지','010-2233-5678','서울특별시 마포구 월드컵로 10, 101동 1203호','[산지직송] 유기농 현미 1kg 국내산 2026 햅쌀','1kg',2,'문 앞에 놓아주세요'],
+    ['2026101512346','이서준','010-9876-1234','경기도 성남시 분당구 판교역로 20','[산지직송] 유기농 현미 1kg 국내산 2026 햅쌀','1kg',1,''],
+    ['2026101512347','박지후','010-5555-0101','부산광역시 해운대구 센텀중앙로 5','국산 귀리 오트밀 500g 무첨가','500g',3,''],
+    ['2026101512348','최유나','010-3141-5926','대전광역시 유성구 대학로 99','잡곡 혼합 10곡 2kg 소포장','2kg',1,'경비실'],
+    ['2026101512349','김민지','010-2233-5678','서울 마포구 월드컵로 10 101동 1203호','국산 귀리 오트밀 500g 무첨가','500g',1,''],
+    ['2026101512345','김민지','010-2233-5678','서울특별시 마포구 월드컵로 10, 101동 1203호','[산지직송] 유기농 현미 1kg 국내산 2026 햅쌀','1kg',2,'문 앞에 놓아주세요'],
+  ]},
+  { name: 'DeliveryList(2026-10-15).xlsx', market: '쿠팡', status: 'ok', rows: [
+    ['31000123','정하은','010-7777-2020','인천광역시 연수구 송도과학로 32','유기농 현미, 1kg, 1개','1kg',2,''],
+    ['31000124','이서준','01098761234','경기도 성남시 분당구 판교역로 20','잡곡 혼합 10곡, 2kg, 1개','2kg',1,'부재시 연락'],
+    ['31000125','한도윤','010-4040-8080','광주광역시 북구 첨단과기로 123','국산 귀리 오트밀, 500g, 2개','500g',2,''],
+    ['31000126','박지후','010-5555-0101','부산 해운대구 센텀중앙로 5','유기농 현미, 1kg, 1개','1kg',1,''],
+  ]},
+  { name: 'orders.csv', market: null, status: 'unknown',
+    headers: ['주문코드','주문일','받는분','받는분 휴대폰','배송지','품목','선택사항','수량','요청사항'],
+    raw: [
+      ['A-1001','2026-10-15','오세린','010-6060-7070','대구광역시 수성구 달구벌대로 50','현미 1kg (자사몰)','',1,''],
+      ['A-1002','2026-10-15','최유나','010-3141-5926','대전광역시 유성구 대학로 99','오트밀 500g (자사몰)','',2,'경비실'],
+      ['A-1003','2026-10-15','윤재희','010-1212-3434','울산광역시 남구 삼산로 7','10곡 2kg (자사몰)','',1,''],
+    ]},
+];
+const GUESS = { orderNo: '주문코드', receiver: '받는분', phone: '받는분 휴대폰', address: '배송지', product: '품목', qty: '수량', option: '선택사항', memo: '요청사항' };
+const ALIAS_SEED = {
+  '[산지직송] 유기농 현미 1kg 국내산 2026 햅쌀': '현미 1kg',
+  '유기농 현미, 1kg, 1개': '현미 1kg',
+  '국산 귀리 오트밀 500g 무첨가': '오트밀 500g',
+  '잡곡 혼합 10곡 2kg 소포장': '10곡 2kg',
+  '잡곡 혼합 10곡, 2kg, 1개': '10곡 2kg',
+};
+
+let files = [], step = 1, filter = '전체', excluded = new Set(), unmerged = new Set(), aliases = {};
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+try { aliases = JSON.parse(localStorage.getItem('om-aliases') || 'null') || { ...ALIAS_SEED }; } catch (e) { aliases = { ...ALIAS_SEED }; }
+function saveAliases() { try { localStorage.setItem('om-aliases', JSON.stringify(aliases)); } catch (e) {} }
+
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2200); }
+
+function go(s) {
+  step = s;
+  ['s1','s2','s21','s3','s4'].forEach(id => $(id).classList.add('hidden'));
+  $(s === 2.1 ? 's21' : 's' + s).classList.remove('hidden');
+  const cur = Math.floor(s);
+  document.querySelectorAll('#steps li').forEach(li => {
+    const n = +li.dataset.s;
+    li.className = n < cur ? 'done' : n === cur ? 'on' : '';
+  });
+  ({ 2: renderS2, 2.1: renderMap, 3: renderS3, 4: renderS4 })[s]?.();
+  window.scrollTo(0, 0);
+}
+
+function toOrder(market, r) {
+  const [orderNo, receiver, phone, address, product, option, qty, memo] = r;
+  return { market, orderNo, receiver, phone, address, product, option, qty: +qty, memo };
+}
+
+function allOrders() {
+  const seen = new Set(), out = [];
+  files.filter(f => f.status === 'ok').forEach(f => f.rows.forEach(r => {
+    const o = toOrder(f.market, r), id = o.market + ':' + o.orderNo;
+    if (seen.has(id)) return; seen.add(id); o.id = id; out.push(o);
+  }));
+  return out;
+}
+
+const normPhone = p => String(p).replace(/\D/g, '');
+const normAddr = a => String(a).replace(/특별시|광역시/g, '').replace(/[\s,]/g, '').replace(/\(.*?\)/g, '');
+const shipKey = o => o.receiver + '|' + normPhone(o.phone) + '|' + normAddr(o.address);
+
+function grouped(orders) {
+  const map = new Map();
+  orders.filter(o => !excluded.has(o.id)).forEach(o => {
+    const k = unmerged.has(o.id) ? 'solo:' + o.id : shipKey(o);
+    if (!map.has(k)) map.set(k, []); map.get(k).push(o);
+  });
+  let n = 0; const info = {};
+  map.forEach(list => { if (list.length > 1) { n++; list.forEach(o => info[o.id] = n); } });
+  return { boxes: map.size, groups: n, info, map };
+}
+
+function renderS2() {
+  const ok = files.filter(f => f.status === 'ok');
+  $('s2-files').textContent = files.length;
+  $('s2-orders').textContent = files.reduce((s, f) => s + (f.rows || f.raw).length, 0);
+  $('file-list').innerHTML = files.map((f, i) => `
+    <li>
+      ${f.status === 'ok' ? `<span class="badge ok">✓ ${esc(f.market)}</span>` : `<span class="badge err">! 인식 못 함</span>`}
+      <span class="fname">${esc(f.name)}</span>
+      <span class="muted small">${(f.rows || f.raw).length}건</span>
+      ${f.status === 'unknown' ? `<button class="link" data-map="${i}">열 직접 연결하기</button>` : ''}
+      <button class="link" data-del="${i}" aria-label="파일 빼기">✕</button>
+    </li>`).join('');
+  const ids = ok.flatMap(f => f.rows.map(r => f.market + ':' + r[0]));
+  $('dup-notice').classList.toggle('hidden', ids.length === new Set(ids).size);
+  $('s2-next').disabled = ok.length === 0;
+  const unknown = files.some(f => f.status === 'unknown');
+  $('s2-next').textContent = unknown ? '인식 못 한 파일 빼고 다음 →' : '다음: 주문 정리 →';
+}
+
+function renderMap() {
+  const f = files.find(f => f.status === 'unknown');
+  $('map-grid').innerHTML = FIELDS.map(fd => `
+    <label class="${fd.req ? 'req' : ''}" for="m-${fd.key}">${fd.label}</label>
+    <select id="m-${fd.key}"><option value="">선택 안 함</option>${f.headers.map(h => `<option ${GUESS[fd.key] === h ? 'selected' : ''}>${esc(h)}</option>`).join('')}</select>`).join('');
+  $('map-preview').innerHTML = `<tr>${f.headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr>` +
+    f.raw.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('');
+}
+
+function confirmMap() {
+  const f = files.find(f => f.status === 'unknown');
+  const pick = {};
+  for (const fd of FIELDS) {
+    pick[fd.key] = $('m-' + fd.key).value;
+    if (fd.req && !pick[fd.key]) { toast(`'${fd.label}' 열을 골라 주세요`); return; }
+  }
+  const idx = k => f.headers.indexOf(pick[k]);
+  f.rows = f.raw.map(r => ['orderNo','receiver','phone','address','product','option','qty','memo'].map(k => idx(k) >= 0 ? r[idx(k)] : ''));
+  f.market = $('map-market').value.trim() || '기타';
+  f.status = 'ok';
+  toast('연결했어요. 다음부터 이 형식은 자동으로 인식합니다.');
+  go(2);
+}
+
+function renderS3() {
+  const orders = allOrders(), g = grouped(orders);
+  const live = orders.filter(o => !excluded.has(o.id));
+  $('s3-orders').textContent = live.length;
+  $('s3-boxes').textContent = g.boxes;
+  $('s3-groups').textContent = g.groups;
+  const markets = ['전체', ...new Set(orders.map(o => o.market))];
+  $('tabs').innerHTML = markets.map(m => {
+    const c = m === '전체' ? orders.length : orders.filter(o => o.market === m).length;
+    return `<button class="${filter === m ? 'on' : ''}" data-tab="${esc(m)}">${esc(m)} ${c}</button>`;
+  }).join('');
+  // 묶음끼리 붙여서 보여 주기
+  const sorted = [...orders].sort((a, b) => (g.info[a.id] || 999) - (g.info[b.id] || 999) || orders.indexOf(a) - orders.indexOf(b));
+  const shown = sorted.filter(o => filter === '전체' || o.market === filter);
+  const color = n => `var(--g${((n - 1) % 6) + 1})`;
+  const name = o => aliases[o.product] || o.product;
+  $('order-table').innerHTML = `<tr><th></th><th>보냄</th><th>마켓</th><th>수취인</th><th>연락처</th><th>상품</th><th class="num">수량</th><th>합포장</th></tr>` +
+    shown.map(o => {
+      const n = g.info[o.id], off = excluded.has(o.id);
+      return `<tr class="${off ? 'off' : ''}">
+        <td class="bar" style="background:${n ? color(n) : 'transparent'}"></td>
+        <td><input type="checkbox" data-ex-o="${esc(o.id)}" ${off ? '' : 'checked'} aria-label="보내기"></td>
+        <td>${esc(o.market)}</td><td>${esc(o.receiver)}</td><td>…${esc(normPhone(o.phone).slice(-4))}</td>
+        <td title="${esc(o.product)}">${esc(name(o))}${aliases[o.product] ? '' : ' <span class="badge warn">원래 이름</span>'}</td>
+        <td class="num">${o.qty}</td>
+        <td>${n ? `<span class="grp" style="color:${color(n)}"><i style="background:${color(n)}"></i>묶음 ${n}</span> <button class="link small" data-split="${esc(o.id)}">풀기</button>` : (unmerged.has(o.id) ? `<button class="link small" data-join="${esc(o.id)}">다시 묶기</button>` : '<span class="muted">—</span>')}</td>
+      </tr>`;
+    }).join('');
+  $('order-cards').innerHTML = shown.map(o => {
+    const n = g.info[o.id], off = excluded.has(o.id);
+    return `<div class="ocard" style="border-left-color:${n ? color(n) : 'var(--border)'};${off ? 'opacity:.45' : ''}">
+      <div class="row between"><b>${esc(o.receiver)}</b><span class="muted small">${esc(o.market)}</span></div>
+      <div>${esc(name(o))} × ${o.qty}</div>
+      <div class="row between small">${n ? `<span class="grp" style="color:${color(n)}">묶음 ${n}</span>` : '<span class="muted">단독 발송</span>'}
+      <label class="row"><input type="checkbox" data-ex-o="${esc(o.id)}" ${off ? '' : 'checked'}> 보냄</label></div>
+    </div>`;
+  }).join('');
+  const missing = [...new Set(orders.map(o => o.product))].filter(p => !aliases[p]).length;
+  $('alias-notice').innerHTML = missing
+    ? `✏️ <div>상품명 줄임말 <b>${missing}개</b>가 아직 없어요. 송장에 긴 이름이 찍힙니다. <button class="link" id="alias-open">설정하기</button></div>`
+    : `✓ <div>모든 상품에 줄임말이 있어요. <button class="link" id="alias-open">수정하기</button></div>`;
+}
+
+function renderAlias() {
+  const prods = [...new Set(allOrders().map(o => o.product))];
+  $('alias-list').innerHTML = prods.map((p, i) => `
+    <div class="alias-item"><span class="small">${esc(p)}</span>
+    <input type="text" data-alias="${i}" value="${esc(aliases[p] || '')}" placeholder="짧은 이름"></div>`).join('');
+  $('alias-list').querySelectorAll('input').forEach(inp => inp.addEventListener('change', () => {
+    const p = prods[+inp.dataset.alias], v = inp.value.trim();
+    if (v) aliases[p] = v; else delete aliases[p];
+    saveAliases(); renderS3();
+  }));
+}
+
+function pickList() {
+  const m = new Map();
+  allOrders().filter(o => !excluded.has(o.id)).forEach(o => {
+    const k = aliases[o.product] || o.product; m.set(k, (m.get(k) || 0) + o.qty);
+  });
+  return [...m.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+function renderS4() {
+  const orders = allOrders().filter(o => !excluded.has(o.id)), g = grouped(allOrders()), pl = pickList();
+  $('ex-boxes').textContent = g.boxes;
+  $('ex-orders').textContent = orders.length;
+  $('ex-kinds').textContent = pl.length;
+  $('ex-qty').textContent = pl.reduce((s, [, q]) => s + q, 0);
+  $('pick').innerHTML = pl.map(([k, q]) => `<li><span>${esc(k)}</span><b>×${q}</b></li>`).join('');
+}
+
+function download(name, rows) {
+  const csv = '﻿' + rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = name; a.click(); URL.revokeObjectURL(a.href);
+  toast(name + ' 내려받기 (프로토타입은 CSV, 실제는 xlsx)');
+}
+
+function exportFile(kind) {
+  const d = new Date().toISOString().slice(0, 10);
+  const all = allOrders().filter(o => !excluded.has(o.id));
+  if (kind === 'all') return download(`통합주문표_${d}.csv`, [['마켓','주문번호','수취인','연락처','주소','상품(원래)','상품(줄임말)','옵션','수량','배송메모'],
+    ...all.map(o => [o.market, o.orderNo, o.receiver, o.phone, o.address, o.product, aliases[o.product] || '', o.option, o.qty, o.memo])]);
+  if (kind === 'pick') return download(`피킹리스트_${d}.csv`, [['상품','수량'], ...pickList()]);
+  if (kind === 'print') return window.print();
+  const g = grouped(allOrders());
+  const rows = [...g.map.values()].map(list => {
+    const o = list[0];
+    return [o.receiver, o.phone, o.address,
+      list.map(x => `${aliases[x.product] || x.product} x${x.qty}`).join(' / '),
+      list.reduce((s, x) => s + x.qty, 0),
+      [...new Set(list.map(x => x.memo).filter(Boolean))].join(' / '),
+      list.map(x => `${x.market}:${x.orderNo}`).join(' ')];
+  });
+  download(`택배업로드_${$('courier').value}_${d}.csv`, [['받는분','전화번호','주소','품목','수량','배송메모','원주문번호'], ...rows]);
+}
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('button, input[type="checkbox"]'); if (!t) return;
+  const ds = t.dataset;
+  if (t.id === 'btn-sample') { files = JSON.parse(JSON.stringify(SAMPLE)); excluded.clear(); unmerged.clear(); filter = '전체'; go(2); }
+  else if (t.id === 's2-back' || t.id === 's4-reset') { files = []; go(1); }
+  else if (t.id === 's2-next') go(3);
+  else if (t.id === 's21-cancel') go(2);
+  else if (t.id === 's21-ok') confirmMap();
+  else if (t.id === 's3-back') go(2);
+  else if (t.id === 's3-next') go(4);
+  else if (t.id === 's4-back') go(3);
+  else if (t.id === 'alias-open') { $('alias-card').classList.remove('hidden'); renderAlias(); $('alias-card').scrollIntoView({ behavior: 'smooth' }); }
+  else if (t.id === 'alias-close') $('alias-card').classList.add('hidden');
+  else if (ds.map !== undefined) go(2.1);
+  else if (ds.del !== undefined) { files.splice(+ds.del, 1); files.length ? renderS2() : go(1); }
+  else if (ds.tab !== undefined) { filter = ds.tab; renderS3(); }
+  else if (ds.split !== undefined) { unmerged.add(ds.split); renderS3(); toast('묶음에서 뺐어요. 따로 발송합니다.'); }
+  else if (ds.join !== undefined) { unmerged.delete(ds.join); renderS3(); }
+  else if (ds.exO !== undefined) { t.checked ? excluded.delete(ds.exO) : excluded.add(ds.exO); renderS3(); }
+  else if (ds.ex !== undefined) exportFile(ds.ex);
+});
+
+go(1);
+</script>
+</body>
+</html>
