@@ -1,5 +1,5 @@
 {
-  "name": "order-merge",
+  "name": "mergehelper",
   "version": "0.1.0",
   "private": true,
   "description": "여러 마켓 주문 엑셀을 브라우저에서 합쳐 택배 업로드 파일과 피킹 리스트로 바꾸는 도구",

@@ -1,4 +1,6 @@
-# 주문 엑셀 합치기
+# MergeHelper — 주문 엑셀 합치기
+
+바로 쓰기: **https://jaehwi000.github.io/MergeHelper/**
 
 여러 마켓(스마트스토어, 쿠팡, 자사몰 등)에서 내려받은 주문 엑셀을 브라우저에 올리면, 하나로 합쳐 다음 세 가지 파일을 만들어 주는 무료 도구입니다.
 
@@ -12,7 +14,7 @@
 
 ## 쓰는 법
 
-1. `app/index.html`을 브라우저로 엽니다. 더블클릭해서 열어도 되고, 인터넷 연결 없이도 동작합니다.
+1. 위 주소로 들어가거나, 저장소를 내려받아 `app/index.html`을 브라우저로 엽니다. 더블클릭해서 열어도 되고, 인터넷 연결 없이도 동작합니다.
 2. 마켓에서 내려받은 주문 파일(xlsx, xls, csv)을 끌어다 놓습니다.
 3. 인식되지 않은 파일은 "열 직접 연결하기"에서 주문번호·수취인 등이 어느 열인지 한 번만 알려 줍니다(다음부터 자동).
 4. 합포장 묶음을 확인하고, 필요하면 상품명 줄임말을 정합니다.
@@ -44,9 +46,9 @@
 
 1. 저장소 **Settings → Pages → Build and deployment → Source**를 **GitHub Actions**로 바꿉니다.
 2. **Actions** 탭에서 "Deploy to GitHub Pages"를 열고 **Run workflow**로 한 번 실행합니다(이후에는 push할 때마다 자동).
-3. 주소는 `https://jaehwi000.github.io/demo/` 입니다.
+3. 주소는 `https://jaehwi000.github.io/MergeHelper/` 입니다.
 
-비공개 저장소의 Pages는 GitHub 유료 요금제(Pro 이상)에서만 쓸 수 있습니다. 무료 요금제라면 저장소를 공개로 바꿔야 합니다.
+저장소 이름을 바꾸면 주소도 함께 바뀝니다(`https://jaehwi000.github.io/<저장소 이름>/`).
 
 ## 개발
 
