@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const XLSX = require(join(root, 'app/vendor/xlsx.full.min.js'));
-for (const f of ['fields', 'markets', 'normalize', 'decode', 'parse', 'merge', 'exporters', 'workbook']) {
+for (const f of ['fields', 'markets', 'normalize', 'decode', 'parse', 'merge', 'exporters', 'workbook', 'tracking']) {
   await import(join(root, `app/js/core/${f}.js`));
 }
 const { OM } = globalThis;
@@ -141,4 +141,87 @@ test('큰 숫자 주문번호가 지수 표기로 바뀌지 않는다', () => {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['상품주문번호', '수취인명'], [2026101512345678, '홍길동']]), 'S');
   const book = OM.readWorkbook(XLSX, 'n.xlsx', XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
   assert.equal(book.sheets[0].aoa[1][0], '2026101512345678');
+});
+
+// ---------- 2단계: 송장번호 되돌려 넣기 ----------
+
+function loadFiles() {
+  return ['스마트스토어_주문.xlsx', '쿠팡_DeliveryList.xlsx', '기타몰_주문내역.xlsx'].map(n => ({ name: n, sheet: { aoa: sheetOf(n) }, parsed: OM.parse.parseSheet(sheetOf(n), {}) }));
+}
+
+test('택배사 결과: 원주문번호로 먼저 찾고, 없으면 이름+가려진 전화번호 뒤 4자리로 찾는다', () => {
+  const files = loadFiles();
+  const { orders } = OM.merge.combine(files);
+  const g = OM.merge.group(orders);
+  const result = sheetOf('택배사_송장결과.xlsx');
+  const m = OM.tracking.matchResult(g.boxes, result);
+  assert.equal(m.found, true);
+  assert.equal(m.rows, 7);
+  assert.equal(m.unmatched.length, 0);
+  assert.equal(m.assigned.size, 7);
+  // 원주문번호가 없는 줄(정하은)도 이름+전화 뒤 4자리로 찾았다.
+  const haeun = g.boxes.find(l => l[0].receiver === '정하은');
+  assert.equal(m.assigned.get(OM.tracking.boxKey(haeun)), '689412345698');
+});
+
+test('택배사 결과: 찾지 못한 줄과 같은 박스에 다른 송장이 온 경우를 알려 준다', () => {
+  const { orders } = OM.merge.combine(loadFiles());
+  const g = OM.merge.group(orders);
+  const aoa = [
+    ['운송장번호', '받는분', '받는분 전화번호', '원주문번호'],
+    ['1111-2222-3333', '김민지', '010-2233-5678', ''],
+    ['999', '김민지', '010-2233-5678', ''],
+    ['555', '모르는사람', '010-0000-0000', ''],
+    ['', '송장 없음', '010-1111-1111', ''],
+  ];
+  const m = OM.tracking.matchResult(g.boxes, aoa);
+  assert.equal(m.rows, 3);
+  const minji = g.boxes.find(l => l[0].receiver === '김민지');
+  assert.equal(m.assigned.get(OM.tracking.boxKey(minji)), '111122223333');
+  assert.equal(m.conflicts.length, 1);
+  assert.equal(m.unmatched.length, 1);
+  assert.equal(m.unmatched[0].receiver, '모르는사람');
+});
+
+test('송장 열이 없는 파일은 결과를 찾지 못했다고 알린다', () => {
+  const m = OM.tracking.matchResult([], [['이름', '전화'], ['a', 'b']]);
+  assert.equal(m.found, false);
+});
+
+test('원본 파일에 송장 채우기: 마켓 열에 넣고, 없으면 열을 추가하고, 묶음의 모든 줄과 중복 줄에도 넣는다', () => {
+  const files = loadFiles();
+  const { orders } = OM.merge.combine(files);
+  const excluded = new Set([orders.find(o => o.receiver === '윤재희').id]);
+  const g = OM.merge.group(orders, excluded);
+  const m = OM.tracking.matchResult(g.boxes, sheetOf('택배사_송장결과.xlsx'));
+  const byLine = OM.tracking.trackingByLine(g.boxes, m.assigned);
+
+  // 쿠팡: 기존 '택배사'·'운송장번호' 열에 넣는다.
+  const cp = files[1];
+  const outCp = OM.tracking.fillFile(cp.sheet.aoa, cp.parsed, byLine, 'CJ대한통운');
+  const h = outCp.aoa[0];
+  assert.equal(h.length, cp.sheet.aoa[0].length);
+  const doyun = outCp.aoa.filter(r => r[12] === '한도윤');
+  assert.equal(doyun.length, 2);
+  assert.ok(doyun.every(r => r[h.indexOf('운송장번호')] === '689412345705' && r[h.indexOf('택배사')] === 'CJ대한통운'));
+  assert.equal(outCp.filled, 5);
+
+  // 스마트스토어: 열이 없으면 맨 뒤에 추가. 중복 줄에도 같은 송장.
+  const ss = files[0];
+  const outSs = OM.tracking.fillFile(ss.sheet.aoa, ss.parsed, byLine, 'CJ대한통운');
+  const hs = outSs.aoa[0];
+  assert.deepEqual(hs.slice(-2), ['택배사', '송장번호']);
+  const t = hs.indexOf('송장번호');
+  assert.equal(outSs.aoa[1][t], outSs.aoa[6][t]);
+  assert.equal(outSs.filled, 6);
+
+  // 보내지 않기로 한 주문은 비워 둔다.
+  const etc = files[2];
+  const outEtc = OM.tracking.fillFile(etc.sheet.aoa, etc.parsed, byLine, 'CJ대한통운');
+  const he = outEtc.aoa[etc.parsed.headerRow];
+  const jaehee = outEtc.aoa.find(r => r.includes('윤재희'));
+  assert.equal(jaehee[he.indexOf('송장번호')] || '', '');
+  assert.equal(outEtc.filled, 1);
+  // 원본 표는 바뀌지 않는다.
+  assert.equal(ss.sheet.aoa[0].length, 14);
 });

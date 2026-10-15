@@ -28,7 +28,7 @@ const browser = await chromium.launch({ env: { ...process.env, LANG: 'C.UTF-8', 
 try {
   const ctx = await browser.newContext({ acceptDownloads: true, viewport: { width: 1200, height: 900 } });
   const page = await ctx.newPage();
-  const problems = [];
+  const problems = globalThis.problems = [];
   page.on('pageerror', e => problems.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.type() === 'error') problems.push('console: ' + m.text()); });
   page.on('request', r => { if (!r.url().startsWith(`http://127.0.0.1:${PORT}/`) && !r.url().startsWith('blob:') && !r.url().startsWith('data:')) problems.push('external request: ' + r.url()); });
@@ -96,6 +96,55 @@ try {
   const wb2 = XLSX.read(readFileSync(await dl2.path()), { type: 'buffer' });
   assert.equal(XLSX.utils.sheet_to_json(wb2.Sheets[wb2.SheetNames[0]], { header: 1 }).length, 1 + 13);
 
+  // ---------- 2단계: 송장번호 넣기 ----------
+  await page.click('#s4-next');
+  await page.waitForSelector('#s5:not(.hidden)');
+  assert.equal(await page.textContent('#s5-total'), '7');
+  assert.equal(await page.textContent('#s5-done'), '0');
+  await page.setInputFiles('#track-input', [sample('택배사_송장결과.xlsx')]);
+  await page.waitForFunction(() => document.querySelector('#s5-done').textContent === '7');
+  assert.match(await page.textContent('#track-notices'), /7줄 중 7줄/);
+  await page.selectOption('#courier-name', '한진택배');
+
+  // 직접 입력한 번호는 결과 파일보다 우선한다.
+  const minjiInput = page.locator('#box-table tr', { hasText: '김민지' }).locator('input');
+  await minjiInput.fill('1234-5678-9012');
+  await minjiInput.dispatchEvent('change');
+  assert.match(await page.locator('#box-table tr', { hasText: '김민지' }).textContent(), /직접 입력/);
+  await page.screenshot({ path: join(shots, 'desk-s5.png'), fullPage: true });
+
+  const outputs = await page.$$eval('#market-outputs li', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+  assert.equal(outputs.length, 4);
+  assert.match(outputs[0], /스마트스토어.*송장 6\/6줄/);
+  assert.match(outputs[3], /자사몰.*송장 1\/2줄/); // 오세린은 보내지 않기로 함
+
+  const readDl = async dl => {
+    const wbx = XLSX.read(readFileSync(await dl.path()), { type: 'buffer' });
+    return XLSX.utils.sheet_to_json(wbx.Sheets[wbx.SheetNames[0]], { header: 1, raw: false, defval: '' });
+  };
+  const [dlSs] = await Promise.all([page.waitForEvent('download'), page.click('[data-fill="0"]')]);
+  assert.match(dlSs.suggestedFilename(), /^발송처리_스마트스토어_\d{4}-\d{2}-\d{2}\.xlsx$/);
+  const ss = await readDl(dlSs);
+  const sh = ss[0];
+  assert.deepEqual(sh.slice(-2), ['택배사', '송장번호']);
+  const minjiRows = ss.filter(r => r[sh.indexOf('수취인명')] === '김민지');
+  assert.equal(minjiRows.length, 3); // 중복 줄 포함
+  assert.ok(minjiRows.every(r => r[sh.indexOf('송장번호')] === '123456789012' && r[sh.indexOf('택배사')] === '한진택배'));
+  assert.equal(ss.find(r => r[sh.indexOf('수취인명')] === '이서준')[sh.indexOf('송장번호')], '689412345677');
+
+  const [dlCp] = await Promise.all([page.waitForEvent('download'), page.click('[data-fill="1"]')]);
+  const cp = await readDl(dlCp);
+  assert.equal(cp[0].length, 17); // 쿠팡은 기존 열에 넣는다
+  assert.ok(cp.slice(1).every(r => r[cp[0].indexOf('운송장번호')]));
+
+  const [dlMap] = await Promise.all([page.waitForEvent('download'), page.click('[data-ex="tracking"]')]);
+  assert.equal((await readDl(dlMap)).length, 1 + 7);
+
+  // 송장 열이 없는 파일을 올리면 알려 준다.
+  await page.setInputFiles('#track-input', [sample('스마트스토어_주문.xlsx')]);
+  await page.waitForFunction(() => /찾지 못했어요/.test(document.querySelector('#track-notices').textContent));
+  assert.equal(await page.textContent('#s5-done'), '7'); // 기존 연결은 유지
+
   // 새로 열어도 열 연결이 기억된다.
   await page.goto(BASE);
   await page.setInputFiles('#file-input', [sample('자사몰_주문.csv')]);
@@ -124,6 +173,13 @@ try {
   await mob.waitForSelector('#order-cards .ocard');
   await mob.screenshot({ path: join(shots, 'mob-s3.png'), fullPage: true });
   assert.ok(await mob.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+  await mob.click('#s3-next');
+  await mob.click('#s4-next');
+  await mob.click('#btn-track-sample');
+  await mob.waitForFunction(() => document.querySelector('#s5-done').textContent !== '0');
+  assert.equal(await mob.textContent('#s5-done'), String(+(await mob.textContent('#s5-total')) - 1));
+  await mob.screenshot({ path: join(shots, 'mob-s5.png'), fullPage: true });
+  assert.ok(await mob.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   assert.deepEqual(mobProblems, []);
   console.log('mobile flow ok');
 
@@ -141,6 +197,7 @@ try {
 } catch (e) {
   failed = true;
   console.error(e);
+  if (globalThis.problems && globalThis.problems.length) console.error('page problems:', globalThis.problems);
 } finally {
   await browser.close();
   server.kill();

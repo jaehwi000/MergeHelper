@@ -22,6 +22,8 @@
         memo: ['배송메세지', '배송메시지'],
         amount: ['최종 상품별 총 주문금액'],
       },
+      // 송장번호를 되돌려 넣을 열. 파일에 없으면 맨 뒤에 추가한다.
+      shipping: { courier: '택배사', tracking: '송장번호' },
     },
     {
       id: 'coupang',
@@ -39,6 +41,7 @@
         memo: ['배송메세지'],
         amount: ['결제액'],
       },
+      shipping: { courier: '택배사', tracking: '운송장번호' },
     },
   ];
 })(globalThis.OM = globalThis.OM || {});

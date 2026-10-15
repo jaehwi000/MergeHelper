@@ -16,13 +16,15 @@
   </header>
 
   <ol class="steps" id="steps">
-    <li data-s="1">① 파일 올리기</li>
-    <li data-s="2">② 확인</li>
-    <li data-s="3">③ 정리</li>
-    <li data-s="4">④ 내려받기</li>
+    <li data-s="1">① <span class="t">파일 올리기</span></li>
+    <li data-s="2">② <span class="t">확인</span></li>
+    <li data-s="3">③ <span class="t">정리</span></li>
+    <li data-s="4">④ <span class="t">내려받기</span></li>
+    <li data-s="5">⑤ <span class="t">송장 넣기</span></li>
   </ol>
 
   <input type="file" id="file-input" class="sr-only" multiple accept=".xlsx,.xls,.csv">
+  <input type="file" id="track-input" class="sr-only" accept=".xlsx,.xls,.csv">
 
   <!-- S1 파일 올리기 -->
   <section id="s1">
@@ -117,9 +119,44 @@
         <button class="primary" data-ex="all">⬇ 내려받기 (xlsx)</button>
       </div>
     </div>
+    <div class="notice mt">📦 <div>택배사에 접수하고 송장번호를 받았나요? 결과 파일을 올리면 마켓별 발송처리 파일에 송장번호를 채워 드려요. <b>이 창을 닫지 말고</b> 이어서 진행하세요.</div></div>
     <div class="row end mt">
       <button id="s4-back">← 이전</button>
       <button id="s4-reset">처음부터 다시</button>
+      <button class="primary" id="s4-next">다음: 송장번호 넣기 →</button>
+    </div>
+  </section>
+
+  <!-- S5 송장 넣기 -->
+  <section id="s5" class="hidden">
+    <div class="card">
+      <h2>송장번호 넣기</h2>
+      <p class="muted small">택배사 사이트에서 송장번호(운송장번호)가 들어간 결과 파일을 내려받아 올려 주세요. 원주문번호로 먼저 박스를 찾고, 없으면 받는분 이름과 연락처로 찾습니다. 찾지 못한 박스는 아래 표에 직접 입력할 수 있어요.</p>
+      <div class="row">
+        <label for="track-input" class="btn primary">택배사 결과 파일 올리기</label>
+        <button id="btn-track-sample" class="hidden">체험용 결과 파일 만들기</button>
+      </div>
+      <div id="track-notices"></div>
+    </div>
+    <div class="card">
+      <div class="row between">
+        <div>송장 연결 <span class="stat" id="s5-done">0</span> / <span id="s5-total">0</span>박스</div>
+        <label class="row small" for="courier-name">택배사
+          <select id="courier-name">
+            <option>CJ대한통운</option><option>한진택배</option><option>롯데택배</option><option>로젠택배</option><option>우체국택배</option><option>경동택배</option><option>대신택배</option><option>일양로지스</option>
+          </select>
+        </label>
+      </div>
+      <div class="table-wrap"><table id="box-table"></table></div>
+    </div>
+    <div class="card">
+      <h3>마켓별 발송처리 파일</h3>
+      <p class="muted small">올렸던 원본 주문 파일에 택배사와 송장번호를 채웠어요. 각 마켓의 발송처리(송장 일괄 등록) 화면에 올리세요. 마켓이 요구하는 양식·택배사 표기와 다를 수 있으니 처음 한 번은 몇 건만 올려 확인해 주세요.</p>
+      <ul class="files" id="market-outputs"></ul>
+      <div class="row mt"><button data-ex="tracking">⬇ 송장 연결표 내려받기</button></div>
+    </div>
+    <div class="row end">
+      <button id="s5-back">← 이전</button>
     </div>
   </section>
 
@@ -136,6 +173,7 @@
 <script src="js/core/merge.js"></script>
 <script src="js/core/exporters.js"></script>
 <script src="js/core/workbook.js"></script>
+<script src="js/core/tracking.js"></script>
 <script src="js/samples.js"></script>
 <script src="js/app.js"></script>
 </body>

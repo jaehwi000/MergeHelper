@@ -56,23 +56,27 @@
     const result = {};
     const buyerish = h => OM.BUYER_WORDS.some(w => h.includes(w));
     for (const f of OM.FIELDS) {
-      const syns = OM.SYNONYMS[f.key].map(s => N().header(s));
-      const ok = i => !used.has(i) && norm[i] && !(['receiver', 'phone', 'address'].includes(f.key) && buyerish(norm[i]));
-      let found = -1;
-      for (const s of syns) {
-        found = norm.findIndex((h, i) => ok(i) && h === s);
-        if (found >= 0) break;
-      }
-      if (found < 0) {
-        for (const s of syns) {
-          if (s.length < 2) continue;
-          found = norm.findIndex((h, i) => ok(i) && h.includes(s));
-          if (found >= 0) break;
-        }
-      }
+      const ok = i => !used.has(i) && !(['receiver', 'phone', 'address'].includes(f.key) && buyerish(norm[i]));
+      const found = findColumn(norm, OM.SYNONYMS[f.key], ok);
       if (found >= 0) { used.add(found); result[f.key] = headers[found]; }
     }
     return result;
+  }
+
+  // 정규화한 열 이름 목록에서 동의어에 맞는 열 번호를 찾는다. 정확히 같은 이름 우선, 없으면 포함 관계.
+  function findColumn(normHeaders, synonyms, ok) {
+    const syns = synonyms.map(s => N().header(s));
+    const usable = i => normHeaders[i] && (!ok || ok(i));
+    for (const s of syns) {
+      const i = normHeaders.findIndex((h, j) => usable(j) && h === s);
+      if (i >= 0) return i;
+    }
+    for (const s of syns) {
+      if (s.length < 2) continue;
+      const i = normHeaders.findIndex((h, j) => usable(j) && h.includes(s));
+      if (i >= 0) return i;
+    }
+    return -1;
   }
 
   function mappingToFields(mapping) {
@@ -125,7 +129,7 @@
 
     const market = detectMarket(headers);
     const saved = savedMappings && savedMappings[sig];
-    let spec, marketName, status, mapping = null;
+    let spec, marketName, status, mapping = null, marketId = null;
 
     if (saved) {
       spec = compileSpec(mappingToFields(saved.mapping), headers);
@@ -135,6 +139,7 @@
     } else if (market) {
       spec = compileSpec(market.fields, headers);
       marketName = market.name;
+      marketId = market.id;
       status = 'ok';
     } else {
       mapping = guessMapping(headers);
@@ -146,10 +151,10 @@
     const missing = missingRequired(spec);
     if (missing.length) {
       if (!mapping) mapping = guessMapping(headers);
-      return { ...base, status: 'unknown', market: marketName, mapping, missing, orders: [] };
+      return { ...base, status: 'unknown', market: marketName, marketId, mapping, missing, orders: [] };
     }
     const { orders, badQty } = rowsToOrders(aoa, headerRow, spec, marketName || '기타');
-    return { ...base, status, market: marketName, mapping, missing: [], orders, badQty };
+    return { ...base, status, market: marketName, marketId, mapping, missing: [], orders, badQty };
   }
 
   // 사용자가 열 연결을 마친 뒤 다시 해석한다.
@@ -161,5 +166,5 @@
     return { ...parsed, status: 'ok', market: marketName, mapping, missing: [], orders, badQty };
   }
 
-  OM.parse = { parseSheet, applyMapping, guessMapping, detectMarket, findHeaderRow, signature };
+  OM.parse = { parseSheet, applyMapping, guessMapping, detectMarket, findHeaderRow, findColumn, signature };
 })(globalThis.OM = globalThis.OM || {});

@@ -18,6 +18,10 @@
     mapIdx: -1,
     savedMappings: store.get('om.mappings', {}),
     aliases: store.get('om.aliases', {}),
+    tracking: new Map(),  // 박스 키 → { no: 송장번호, source: 'file' | 'manual' }
+    trackNotices: '',
+    isSample: false,
+    courier: store.get('om.courier', 'CJ대한통운'),
   };
   let nextId = 1;
 
@@ -33,14 +37,14 @@
   let step = 1;
   function go(s) {
     step = s;
-    ['s1', 's2', 's21', 's3', 's4'].forEach(id => $(id).classList.add('hidden'));
+    ['s1', 's2', 's21', 's3', 's4', 's5'].forEach(id => $(id).classList.add('hidden'));
     $(s === 2.1 ? 's21' : 's' + s).classList.remove('hidden');
     const cur = Math.floor(s);
     document.querySelectorAll('#steps li').forEach(li => {
       const n = +li.dataset.s;
       li.className = n < cur ? 'done' : n === cur ? 'on' : '';
     });
-    ({ 2: renderS2, 2.1: renderMap, 3: renderS3, 4: renderS4 })[s]?.();
+    ({ 2: renderS2, 2.1: renderMap, 3: renderS3, 4: renderS4, 5: renderS5 })[s]?.();
     window.scrollTo(0, 0);
   }
 
@@ -109,6 +113,7 @@
       }
       addBook(s.name, bytes.byteLength || bytes.length, OM.readWorkbook(XLSX, s.name, bytes));
     }
+    state.isSample = true;
     go(2);
   }
 
@@ -117,6 +122,9 @@
     state.excluded.clear();
     state.unmerged.clear();
     state.filter = '전체';
+    state.tracking.clear();
+    state.trackNotices = '';
+    state.isSample = false;
   }
 
   function combined() {
@@ -309,21 +317,27 @@
 
   function saveXlsx(fileName, sheetName, rows) {
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = rows[0].map((_, c) => ({ wch: Math.min(60, Math.max(6, ...rows.map(r => String(r[c] ?? '').length * 1.6))) }));
+    const width = Math.max(...rows.map(r => r.length));
+    ws['!cols'] = Array.from({ length: width }, (_, c) => ({ wch: Math.min(60, Math.max(6, ...rows.map(r => String(r[c] ?? '').length * 1.6))) }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
     XLSX.writeFile(wb, fileName);
     toast(`${fileName} 파일을 내려받았어요.`);
   }
 
-  function exportFile(kind) {
+  function today() {
     const d = new Date();
-    const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  function exportFile(kind) {
+    const stamp = today();
     const { orders } = combined();
     const g = OM.merge.group(orders, state.excluded, state.unmerged);
     if (kind === 'courier') return saveXlsx(`택배업로드_${stamp}.xlsx`, '택배업로드', OM.exporters.courierRows(g.boxes, state.aliases));
     if (kind === 'pick') return saveXlsx(`피킹리스트_${stamp}.xlsx`, '피킹리스트', OM.exporters.pickRows(orders, state.excluded, state.aliases));
     if (kind === 'all') return saveXlsx(`통합주문표_${stamp}.xlsx`, '통합주문표', OM.exporters.allRows(orders, state.excluded, state.aliases, g.groupNo));
+    if (kind === 'tracking') return saveXlsx(`송장연결표_${stamp}.xlsx`, '송장연결표', trackingRows(g.boxes));
     if (kind === 'print') {
       document.body.classList.add('print-pick');
       window.print();
@@ -331,9 +345,164 @@
     }
   }
 
+  // ---------- S5 송장 넣기 ----------
+  function currentBoxes() {
+    const { orders } = combined();
+    return OM.merge.group(orders, state.excluded, state.unmerged).boxes;
+  }
+
+  function assignedMap(boxes) {
+    const m = new Map();
+    for (const list of boxes) {
+      const t = state.tracking.get(OM.tracking.boxKey(list));
+      if (t && t.no) m.set(OM.tracking.boxKey(list), t.no);
+    }
+    return m;
+  }
+
+  function boxSummary(list) {
+    return list.map(o => `${OM.exporters.displayName(o, state.aliases)} x${o.qty}`).join(' / ');
+  }
+
+  function renderS5() {
+    const boxes = currentBoxes();
+    $('courier-name').value = state.courier;
+    $('btn-track-sample').classList.toggle('hidden', !state.isSample);
+    $('track-notices').innerHTML = state.trackNotices;
+    $('box-table').innerHTML = `<thead><tr><th>받는분</th><th>연락처</th><th>마켓</th><th>품목</th><th>송장번호</th><th>상태</th></tr></thead><tbody>` +
+      boxes.map(list => {
+        const k = OM.tracking.boxKey(list), o = list[0], t = state.tracking.get(k);
+        return `<tr>
+          <td>${esc(o.receiver)}</td>
+          <td>…${esc(last4(o.phone))}</td>
+          <td>${esc([...new Set(list.map(x => x.market))].join(', '))}</td>
+          <td class="wrap-cell">${esc(boxSummary(list))}</td>
+          <td><input type="text" class="track-in" data-track="${esc(k)}" value="${esc(t ? t.no : '')}" inputmode="numeric" aria-label="${esc(o.receiver)} 송장번호" placeholder="직접 입력"></td>
+          <td data-state="${esc(k)}">${trackBadge(t)}</td>
+        </tr>`;
+      }).join('') + '</tbody>';
+    renderOutputs();
+    renderS5Counts(boxes);
+  }
+
+  function trackBadge(t) {
+    if (!t || !t.no) return '<span class="badge err">없음</span>';
+    return t.source === 'file' ? '<span class="badge ok">결과 파일</span>' : '<span class="badge muted">직접 입력</span>';
+  }
+
+  function usableFiles() {
+    return state.files.map((f, i) => ({ f, i })).filter(({ f }) => f.parsed && (f.parsed.status === 'ok' || f.parsed.status === 'guessed'));
+  }
+
+  function renderOutputs() {
+    $('market-outputs').innerHTML = usableFiles().map(({ f, i }) => `<li><div class="head">
+        <span class="badge" data-out-badge="${i}">${esc(f.parsed.market)}</span>
+        <span class="fname">${esc(f.name)}</span>
+        <span class="muted small" data-out-count="${i}"></span>
+        <button class="primary" data-fill="${i}">⬇ 내려받기</button>
+      </div></li>`).join('');
+  }
+
+  // 송장 입력 중에는 표·버튼을 다시 그리지 않고 숫자와 상태만 바꾼다.
+  // (입력 칸을 벗어나며 내려받기를 누를 때 버튼이 새로 그려지면 클릭이 사라진다.)
+  function renderS5Counts(boxes) {
+    boxes = boxes || currentBoxes();
+    const assigned = assignedMap(boxes);
+    $('s5-done').textContent = assigned.size;
+    $('s5-total').textContent = boxes.length;
+    const byLine = OM.tracking.trackingByLine(boxes, assigned);
+    for (const { f, i } of usableFiles()) {
+      const filled = f.parsed.orders.filter(o => byLine.has(OM.merge.lineKey(o))).length;
+      const total = f.parsed.orders.length;
+      const count = document.querySelector(`[data-out-count="${i}"]`);
+      if (!count) continue;
+      count.textContent = `송장 ${filled}/${total}줄`;
+      document.querySelector(`[data-out-badge="${i}"]`).className = 'badge ' + (filled === total ? 'ok' : filled ? 'warn' : 'err');
+      document.querySelector(`[data-fill="${i}"]`).disabled = !filled;
+    }
+  }
+
+  function trackingRows(boxes) {
+    const head = ['받는분', '연락처', '주소', '품목', '택배사', '송장번호', '입력 방법', '원주문번호'];
+    return [head, ...boxes.map(list => {
+      const o = list[0], t = state.tracking.get(OM.tracking.boxKey(list));
+      return [o.receiver, OM.norm.phoneDisplay(o.phone), o.address, boxSummary(list), t && t.no ? state.courier : '',
+        t ? t.no : '', t ? (t.source === 'file' ? '결과 파일' : '직접 입력') : '', list.map(x => `${x.market}:${x.orderNo}`).join(' ')];
+    })];
+  }
+
+  function applyTrackingResult(aoa, label) {
+    const boxes = currentBoxes();
+    const m = OM.tracking.matchResult(boxes, aoa);
+    if (!m.found) {
+      state.trackNotices = `<div class="notice err">! <div>${esc(label)}에서 송장번호 열과 받는분(또는 원주문번호) 열을 찾지 못했어요. 택배사에서 받은 결과 파일이 맞는지 확인해 주세요.</div></div>`;
+      return renderS5();
+    }
+    // 직접 입력한 번호는 덮어쓰지 않는다.
+    let added = 0;
+    m.assigned.forEach((no, k) => {
+      const cur = state.tracking.get(k);
+      if (cur && cur.source === 'manual' && cur.no) return;
+      state.tracking.set(k, { no, source: 'file' });
+      added++;
+    });
+    const parts = [`<div class="notice lock">✓ <div>${esc(label)}: 송장 ${m.rows}줄 중 <b>${m.rows - m.unmatched.length - m.conflicts.length}줄</b>을 박스에 연결했어요.</div></div>`];
+    if (m.unmatched.length) {
+      parts.push(`<div class="notice warn">⚠ <div>연결하지 못한 줄 ${m.unmatched.length}개: ` +
+        m.unmatched.slice(0, 10).map(u => `${esc(u.receiver || '(이름 없음)')} ${esc(u.tracking)} (${esc(u.reason)})`).join(', ') +
+        (m.unmatched.length > 10 ? ' 외' : '') + '. 아래 표에 직접 입력할 수 있어요.</div></div>');
+    }
+    if (m.conflicts.length) {
+      parts.push(`<div class="notice warn">⚠ <div>한 박스에 송장이 여러 개 온 경우 ${m.conflicts.length}건: ` +
+        m.conflicts.slice(0, 10).map(c => `${esc(c.receiver)} ${esc(c.tracking)} (먼저 연결된 ${esc(c.existing)} 유지)`).join(', ') + '</div></div>');
+    }
+    state.trackNotices = parts.join('');
+    renderS5();
+    toast(`송장 ${added}개를 연결했어요.`);
+  }
+
+  async function handleTrackFile(file) {
+    if (!file) return;
+    try {
+      const book = OM.readWorkbook(XLSX, file.name, await readAsArrayBuffer(file));
+      const sheet = book.sheets.find(sh => OM.tracking.readResult(sh.aoa)) || book.sheets[0];
+      applyTrackingResult(sheet ? sheet.aoa : [], file.name);
+    } catch (e) {
+      const [label, help] = ERRORS[e.code] || ERRORS.unreadable;
+      state.trackNotices = `<div class="notice err">! <div>${esc(file.name)}: ${esc(label)}. ${esc(help)}</div></div>`;
+      renderS5();
+    }
+  }
+
+  // 체험용: 지금 박스로 택배사 결과 파일을 흉내 낸다. 절반만 원주문번호를 남기고 전화번호는 가리며, 마지막 박스는 빼 둔다.
+  function sampleResult() {
+    const boxes = currentBoxes();
+    const rows = [['운송장번호', '받는분성명', '받는분전화번호', '받는분주소', '고객주문번호']];
+    boxes.slice(0, -1).forEach((list, i) => {
+      const o = list[0];
+      rows.push([`6894${String(12345670 + i * 7).padStart(8, '0')}`, o.receiver,
+        OM.norm.phoneDisplay(o.phone).replace(/^(\d{3})-(\d{3,4})-/, '$1-****-'), o.address,
+        i % 2 === 0 ? list.map(x => `${x.market}:${x.orderNo}`).join(' ') : '']);
+    });
+    return rows;
+  }
+
+  function downloadFilled(i) {
+    const f = state.files[i];
+    const boxes = currentBoxes();
+    const byLine = OM.tracking.trackingByLine(boxes, assignedMap(boxes));
+    const out = OM.tracking.fillFile(f.sheet.aoa, f.parsed, byLine, state.courier);
+    const safe = String(f.parsed.market).replace(/[\\/:*?"<>|]/g, '_');
+    saveXlsx(`발송처리_${safe}_${today()}.xlsx`, (f.sheet.name || 'Sheet1').slice(0, 31), out.aoa);
+  }
+
   // ---------- 이벤트 ----------
   $('file-input').addEventListener('change', e => {
     addFiles(e.target.files);
+    e.target.value = '';
+  });
+  $('track-input').addEventListener('change', e => {
+    handleTrackFile(e.target.files[0]);
     e.target.value = '';
   });
 
@@ -344,7 +513,9 @@
   window.addEventListener('drop', e => {
     e.preventDefault();
     drop.classList.remove('over');
-    if (e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+    if (!(e.dataTransfer && e.dataTransfer.files.length)) return;
+    if (step === 5) handleTrackFile(e.dataTransfer.files[0]);
+    else addFiles(e.dataTransfer.files);
   });
 
   document.addEventListener('change', e => {
@@ -352,6 +523,16 @@
     if (t.dataset.send !== undefined) {
       t.checked ? state.excluded.delete(t.dataset.send) : state.excluded.add(t.dataset.send);
       renderS3();
+    } else if (t.dataset.track !== undefined) {
+      const no = OM.tracking.normTracking(t.value);
+      if (no) state.tracking.set(t.dataset.track, { no, source: 'manual' });
+      else state.tracking.delete(t.dataset.track);
+      const cell = document.querySelector(`[data-state="${CSS.escape(t.dataset.track)}"]`);
+      if (cell) cell.innerHTML = trackBadge(state.tracking.get(t.dataset.track));
+      renderS5Counts();
+    } else if (t.id === 'courier-name') {
+      state.courier = t.value;
+      store.set('om.courier', t.value);
     } else if (t.dataset.alias !== undefined) {
       const v = t.value.trim();
       if (v) state.aliases[t.dataset.alias] = v; else delete state.aliases[t.dataset.alias];
@@ -373,6 +554,9 @@
       case 's3-back': return go(2);
       case 's3-next': return go(4);
       case 's4-back': return go(3);
+      case 's4-next': return go(5);
+      case 's5-back': return go(4);
+      case 'btn-track-sample': return applyTrackingResult(sampleResult(), '체험용 결과 파일');
       case 'alias-open':
         $('alias-card').classList.remove('hidden');
         renderAlias();
@@ -385,6 +569,7 @@
     else if (ds.split !== undefined) { state.unmerged.add(ds.split); renderS3(); toast('묶음에서 뺐어요. 따로 발송합니다.'); }
     else if (ds.join !== undefined) { state.unmerged.delete(ds.join); renderS3(); }
     else if (ds.ex !== undefined) exportFile(ds.ex);
+    else if (ds.fill !== undefined) downloadFilled(+ds.fill);
   });
 
   go(1);
