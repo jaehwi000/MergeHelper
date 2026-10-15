@@ -36,6 +36,18 @@
 | 송장번호 되돌려 넣기 | 원본 주문 파일에 택배사·송장번호를 채워 줌. 스마트스토어 '택배사'·'송장번호', 쿠팡 '택배사'·'운송장번호' 열(추정)에 넣고, 없으면 맨 뒤에 열을 추가. **각 마켓 일괄 등록 양식과 택배사 표기로 검증 필요** |
 | 한 박스가 여러 송장으로 나뉜 경우 | 첫 번째 송장만 연결하고 나머지는 알려 줌 |
 
+## 배포 (GitHub Pages)
+
+`main`에 `app/`이나 `tests/`가 바뀌어 올라오면 `.github/workflows/pages.yml`이 단위 테스트를 돌린 뒤 `app/` 폴더를 GitHub Pages로 배포합니다.
+
+처음 한 번만 설정이 필요합니다.
+
+1. 저장소 **Settings → Pages → Build and deployment → Source**를 **GitHub Actions**로 바꿉니다.
+2. **Actions** 탭에서 "Deploy to GitHub Pages"를 열고 **Run workflow**로 한 번 실행합니다(이후에는 push할 때마다 자동).
+3. 주소는 `https://jaehwi000.github.io/demo/` 입니다.
+
+비공개 저장소의 Pages는 GitHub 유료 요금제(Pro 이상)에서만 쓸 수 있습니다. 무료 요금제라면 저장소를 공개로 바꿔야 합니다.
+
 ## 개발
 
 빌드 과정 없는 정적 웹페이지입니다.
