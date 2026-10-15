@@ -3,6 +3,7 @@
 - 작성일: 2026-10-15
 - 근거: [research/01-pain-points.md](../research/01-pain-points.md)의 A1(주문 파일 취합), A2(다채널 관리)
 - 프로토타입: [docs/prototype/order-merge.html](prototype/order-merge.html) (샘플 데이터로 눌러볼 수 있는 화면)
+- 구현: [app/](../app/) (실제 파일을 읽는 버전, 2026-10-15 1차 개발 완료. 사용법은 [README](../README.md))
 
 ## 1. 한 줄 정의
 

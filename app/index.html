@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- 주문 데이터가 밖으로 나가지 않도록 외부 연결(fetch·XHR·폼 전송)을 모두 막는다. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>주문 엑셀 합치기</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>주문 엑셀 합치기</h1>
+    <span class="tag">베타</span>
+  </header>
+
+  <ol class="steps" id="steps">
+    <li data-s="1">① 파일 올리기</li>
+    <li data-s="2">② 확인</li>
+    <li data-s="3">③ 정리</li>
+    <li data-s="4">④ 내려받기</li>
+  </ol>
+
+  <input type="file" id="file-input" class="sr-only" multiple accept=".xlsx,.xls,.csv">
+
+  <!-- S1 파일 올리기 -->
+  <section id="s1">
+    <div class="card">
+      <div class="drop" id="drop">
+        <strong>여기에 주문 엑셀 파일을 끌어다 놓으세요</strong>
+        <div class="muted small">여러 개를 한 번에 올릴 수 있어요 · xlsx, xls, csv</div>
+        <div class="row center mt">
+          <label for="file-input" class="btn primary" id="pick-label">파일 선택</label>
+          <button id="btn-sample">샘플 파일로 체험하기</button>
+        </div>
+      </div>
+      <div class="notice lock">🔒 <div>파일은 <b>이 브라우저 안에서만</b> 처리되며 어디에도 업로드되지 않습니다. 창을 닫으면 주문 데이터는 사라집니다. 열 연결과 상품명 줄임말 설정만 이 브라우저에 저장됩니다.</div></div>
+      <p class="muted small">자동 인식: 스마트스토어 · 쿠팡 (그 밖의 쇼핑몰은 열 이름으로 추측하거나 직접 연결)</p>
+    </div>
+  </section>
+
+  <!-- S2 파일 확인 -->
+  <section id="s2" class="hidden">
+    <div class="card">
+      <div class="row between">
+        <div><span class="stat" id="s2-files">0</span> <span class="muted">파일</span> · <span class="stat" id="s2-orders">0</span> <span class="muted">주문</span></div>
+        <label for="file-input" class="btn">+ 파일 더 올리기</label>
+      </div>
+      <ul class="files" id="file-list"></ul>
+      <div id="s2-notices"></div>
+    </div>
+    <div class="row end">
+      <button id="s2-back">← 처음으로</button>
+      <button class="primary" id="s2-next">다음: 주문 정리 →</button>
+    </div>
+  </section>
+
+  <!-- S2-1 열 연결 -->
+  <section id="s21" class="hidden">
+    <div class="card">
+      <h2 id="map-title"></h2>
+      <p class="muted small">주문 정보가 들어 있는 열을 골라 주세요. 열 이름이 비슷한 것으로 미리 골라 두었어요.</p>
+      <div class="map-grid" id="map-grid"></div>
+      <h3 class="mt small">미리보기 (첫 3줄)</h3>
+      <div class="table-wrap"><table id="map-preview"></table></div>
+      <div class="map-grid mt">
+        <label for="map-market">쇼핑몰 이름</label>
+        <input type="text" id="map-market" maxlength="20">
+      </div>
+      <label class="row small mt"><input type="checkbox" id="map-remember" checked> 다음에도 이 형식은 자동으로 연결</label>
+    </div>
+    <div class="row end">
+      <button id="s21-cancel">취소</button>
+      <button class="primary" id="s21-ok">연결 완료</button>
+    </div>
+  </section>
+
+  <!-- S3 주문 정리 -->
+  <section id="s3" class="hidden">
+    <div class="card">
+      <div>주문 <span class="stat" id="s3-orders">0</span>건 → 발송 <span class="stat" id="s3-boxes">0</span>박스 <span class="muted">(합포장 <span id="s3-groups">0</span>묶음)</span></div>
+      <div class="tabs" id="tabs"></div>
+      <div class="table-wrap orders"><table id="order-table"></table></div>
+      <div class="cards" id="order-cards"></div>
+      <div class="notice" id="alias-notice"></div>
+    </div>
+    <div class="card hidden" id="alias-card">
+      <div class="row between"><h3>상품명 줄임말</h3><button class="link" id="alias-close">닫기</button></div>
+      <p class="muted small">송장과 피킹 리스트에는 줄임말이 찍힙니다. 마켓마다 이름이 달라도 같은 줄임말을 주면 피킹 리스트에서 합쳐져요. 한 번 정하면 다음에도 기억해요.</p>
+      <div class="alias-list" id="alias-list"></div>
+    </div>
+    <div class="row end">
+      <button id="s3-back">← 이전</button>
+      <button class="primary" id="s3-next">다음: 내려받기 →</button>
+    </div>
+  </section>
+
+  <!-- S4 내려받기 -->
+  <section id="s4" class="hidden">
+    <div class="exports">
+      <div class="card">
+        <h3>택배사 업로드용</h3>
+        <div class="muted small"><span id="ex-boxes"></span>박스 · 합포장 반영 · 한 줄이 한 박스</div>
+        <p class="small muted">기본 양식(받는분·전화번호·우편번호·주소·품목·수량·배송메모·원주문번호)으로 만듭니다. 택배사별 전용 양식은 실제 양식을 확인한 뒤 추가할 예정이에요.</p>
+        <button class="primary" data-ex="courier">⬇ 내려받기 (xlsx)</button>
+      </div>
+      <div class="card" id="pick-card">
+        <h3>피킹 리스트</h3>
+        <div class="muted small"><span id="ex-kinds"></span>종 · 총 <span id="ex-qty"></span>개</div>
+        <ul class="pick" id="pick"></ul>
+        <div class="row no-print"><button data-ex="print">🖨 인쇄</button><button class="primary" data-ex="pick">⬇ 내려받기</button></div>
+      </div>
+      <div class="card">
+        <h3>통합 주문표</h3>
+        <div class="muted small"><span id="ex-orders"></span>건 · 원래 마켓·주문번호·합포장 묶음 포함</div>
+        <button class="primary" data-ex="all">⬇ 내려받기 (xlsx)</button>
+      </div>
+    </div>
+    <div class="row end mt">
+      <button id="s4-back">← 이전</button>
+      <button id="s4-reset">처음부터 다시</button>
+    </div>
+  </section>
+
+  <footer>주문 데이터는 서버로 전송되지 않습니다 · 엑셀 처리: SheetJS</footer>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="js/core/fields.js"></script>
+<script src="js/core/markets.js"></script>
+<script src="js/core/normalize.js"></script>
+<script src="js/core/decode.js"></script>
+<script src="js/core/parse.js"></script>
+<script src="js/core/merge.js"></script>
+<script src="js/core/exporters.js"></script>
+<script src="js/core/workbook.js"></script>
+<script src="js/samples.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
